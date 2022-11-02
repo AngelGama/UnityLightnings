@@ -12,6 +12,9 @@ public class LightningBehaviour : MonoBehaviour
 
     // Speed at which bolts will fade out
     public float fadeOutRate = 0.03f;
+    [Range(0.5f, 2f)]
+    public float timer = 0.5f;
+    float lastCheck = 0f;
 
     // For pooling
     List<GameObject> activeBoltsObj;
@@ -40,10 +43,7 @@ public class LightningBehaviour : MonoBehaviour
 
     // Contains all of the pieces for the branches
     List<GameObject> branchesObj;
-
-    // Handling mouse clicks
-    int clicks = 0;
-    Vector2 pos1, pos2;
+    public Vector2 pos1, pos2;
 
     void Start()
     {
@@ -105,142 +105,114 @@ public class LightningBehaviour : MonoBehaviour
             }
         }
 
-        // Check for key press and set mode accordingly
-        if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
+        if ((Time.time - lastCheck) >= timer)
         {
-            currentMode = Mode.bolt;
-        }
-        else if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
-        {
-            currentMode = Mode.branch;
-        }
-        else if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3))
-        {
-            currentMode = Mode.moving;
-        }
-        else if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4))
-        {
-            currentMode = Mode.nodes;
-        }
-        else if (Input.GetKeyDown(KeyCode.Alpha5) || Input.GetKeyDown(KeyCode.Keypad5))
-        {
-            currentMode = Mode.burst;
-        }
+            lastCheck = Time.time;
+            timer = Random.Range(0.5f, 2f);
+            fadeOutRate = Random.Range(0.002f, 0.007f);
+            currentMode = (Mode)Random.Range(0, 5);
+            alpha = Random.Range(0.9f, 1.9f);
 
-        // If left mouse button pressed initialize start and end positions
-        if (Input.GetMouseButtonDown(0))
-        {
-            // First click sets start position
-            if (clicks == 0)
+            pos1 = new Vector2(Random.Range(-20, 20), 11f);
+            pos2 = new Vector2(Random.Range(-15, 15), -13f);
+
+            // Handle the current mode appropriately
+            switch (currentMode)
             {
-                Vector3 temp = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-                pos1 = new Vector2(temp.x, temp.y);
-            }
-            else if (clicks == 1) // Second click sets end position
-            {
-                Vector3 temp = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-                pos2 = new Vector2(temp.x, temp.y);
+                case Mode.bolt:
 
-                // Handle the current mode appropriately
-                switch (currentMode)
-                {
-                    case Mode.bolt:
+                    // Create a (pooled) bolt from pos1 to pos2
+                    CreatePooledBolt(pos1, pos2, Color.white, 1f);
+                    break;
 
-                        // Create a (pooled) bolt from pos1 to pos2
-                        CreatePooledBolt(pos1, pos2, Color.white, 1f);
-                        break;
+                case Mode.branch:
 
-                    case Mode.branch:
+                    // Instantiate from branch prefab
+                    GameObject branchObj = (GameObject)GameObject.Instantiate(BranchPrefab);
 
-                        // Instantiate from branch prefab
-                        GameObject branchObj = (GameObject)GameObject.Instantiate(BranchPrefab);
+                    // Get the branch component
+                    LightningBranch branchComponent = branchObj.GetComponent<LightningBranch>();
 
-                        // Get the branch component
-                        LightningBranch branchComponent = branchObj.GetComponent<LightningBranch>();
+                    // Initialize the branch component using position data
+                    branchComponent.Initialize(pos1, pos2, BoltPrefab, alpha, fadeOutRate);
 
-                        // Initialize the branch component using position data
-                        branchComponent.Initialize(pos1, pos2, BoltPrefab, alpha, fadeOutRate);
+                    // Add it to active branches list 
+                    branchesObj.Add(branchObj);
+                    break;
 
-                        // Add it to active branches list 
-                        branchesObj.Add(branchObj);
-                        break;
+                case Mode.moving:
 
-                    case Mode.moving:
+                    // Prevent from getting a 0 magnitude
+                    if (Vector2.Distance(pos1, pos2) <= 0)
+                    {
+                        // Sets a random position
+                        Vector2 adjust = Random.insideUnitCircle;
 
-                        // Prevent from getting a 0 magnitude
-                        if (Vector2.Distance(pos1, pos2) <= 0)
-                        {
-                            // Sets a random position
-                            Vector2 adjust = Random.insideUnitCircle;
+                        // Failsafe
+                        if (adjust.magnitude <= 0) adjust.x += .1f;
 
-                            // Failsafe
-                            if (adjust.magnitude <= 0) adjust.x += .1f;
+                        // Adjust the end position
+                        pos2 += adjust;
+                    }
 
-                            // Adjust the end position
-                            pos2 += adjust;
-                        }
+                    // Clear out any old moving bolt
+                    for (int i = movingBolt.Count - 1; i >= 0; i--)
+                    {
+                        Destroy(movingBolt[i]);
+                        movingBolt.RemoveAt(i);
+                    }
 
-                        // Clear out any old moving bolt
-                        for (int i = movingBolt.Count - 1; i >= 0; i--)
-                        {
-                            Destroy(movingBolt[i]);
-                            movingBolt.RemoveAt(i);
-                        }
+                    // Get the velocity so we know what direction to send the bolt in after initial creation
+                    lightningVelocity = (pos2 - pos1).normalized;
 
-                        // Get the velocity so we know what direction to send the bolt in after initial creation
-                        lightningVelocity = (pos2 - pos1).normalized;
+                    // Instantiate from bolt prefab
+                    boltObj = (GameObject)GameObject.Instantiate(BoltPrefab);
 
-                        // Instantiate from bolt prefab
-                        boltObj = (GameObject)GameObject.Instantiate(BoltPrefab);
+                    // Get the bolt component
+                    boltComponent = boltObj.GetComponent<LightningBolt>();
 
-                        // Get the bolt component
-                        boltComponent = boltObj.GetComponent<LightningBolt>();
+                    // Initialize it with 5 max segments
+                    boltComponent.Initialize(5);
 
-                        // Initialize it with 5 max segments
-                        boltComponent.Initialize(5);
+                    // Activate the bolt using position data
+                    boltComponent.ActivateBolt(pos1, pos2, Color.white, 1f, alpha, fadeOutRate);
 
-                        // Activate the bolt using position data
-                        boltComponent.ActivateBolt(pos1, pos2, Color.white, 1f, alpha, fadeOutRate);
+                    // Add it to the list
+                    movingBolt.Add(boltObj);
+                    break;
 
-                        // Add it to the list
-                        movingBolt.Add(boltObj);
-                        break;
+                case Mode.burst:
 
-                    case Mode.burst:
+                    // Get the difference between positions
+                    Vector2 diff = pos2 - pos1;
 
-                        // Get the difference between positions
-                        Vector2 diff = pos2 - pos1;
+                    // Define number of bolts 
+                    int boltsInBurst = 10;
 
-                        // Define number of bolts 
-                        int boltsInBurst = 10;
+                    for (int i = 0; i < boltsInBurst; i++)
+                    {
+                        // Rotate around the z axis to the appropriate angle
+                        Quaternion rot = Quaternion.AngleAxis((360f / boltsInBurst) * i, new Vector3(0, 0, 1));
 
-                        for (int i = 0; i < boltsInBurst; i++)
-                        {
-                            // Rotate around the z axis to the appropriate angle
-                            Quaternion rot = Quaternion.AngleAxis((360f / boltsInBurst) * i, new Vector3(0, 0, 1));
+                        // Calculate the end position for the bolt
+                        Vector2 boltEnd = (Vector2)(rot * diff) + pos1;
 
-                            // Calculate the end position for the bolt
-                            Vector2 boltEnd = (Vector2)(rot * diff) + pos1;
+                        // Create a (pooled) bolt from pos1 to boltEnd
+                        CreatePooledBolt(pos1, boltEnd, Color.white, 1f);
+                    }
 
-                            // Create a (pooled) bolt from pos1 to boltEnd
-                            CreatePooledBolt(pos1, boltEnd, Color.white, 1f);
-                        }
-
-                        break;
-                }
+                    break;
             }
 
-            // Increment click count
-            clicks++;
-
-            // Restart the count after 2 clicks
-            if (clicks > 1) clicks = 0;
         }
 
         // If in node mode
         if (currentMode == Mode.nodes)
         {
             // Constantly create a (pooled) bolt between the two assigned positions
+            pos2.x = pos1.x + Random.Range(-1, 1);
+            pos2.y = -20f;
+            pos1.y = 20f;
             CreatePooledBolt(pos1, pos2, Color.white, 1f);
         }
 
