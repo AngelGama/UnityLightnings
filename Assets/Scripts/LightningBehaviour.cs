@@ -13,6 +13,8 @@ public class LightningBehaviour : MonoBehaviour
     // Speed at which bolts will fade out
     public float fadeOutRate = 0.03f;
     [Range(0.5f, 2f)]
+
+    // Lightning frequency variables
     public float timer = 0.5f;
     float lastCheck = 0f;
 
@@ -105,9 +107,12 @@ public class LightningBehaviour : MonoBehaviour
             }
         }
 
+        // Generates a new lightning bolt every 0.5-2 seconds
         if ((Time.time - lastCheck) >= timer)
         {
             lastCheck = Time.time;
+
+            // Randomly initialize lightning variables
             timer = Random.Range(0.5f, 2f);
             fadeOutRate = Random.Range(0.002f, 0.007f);
             currentMode = (Mode)Random.Range(0, 5);
